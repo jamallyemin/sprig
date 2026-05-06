@@ -1,9 +1,9 @@
 /*
 @title: Mr. Moshu
-@author: Jamally Emin
-@description: A terminal-themed hacker puzzle game.
-@tags: ["hacker", "puzzle", "terminal"]
+@author: Emin Jamally
+@tags: ["hacker", "puzzle", "terminal", "stealth"]
 @addedOn: 2026-04-07
+@description: A hacking-themed puzzle game. Play as a "Ghost" in the machine — collect data cubes, bypass active firewalls, and decrypt terminal passwords to reach "Owner" status.
 */
 const p = "p";
 const w = "w";
@@ -30,7 +30,7 @@ setLegend(
 .00LLLLLL11LL00.
 .0LLLLLLLLLLLL0.
 .0LLLLLLLLLLLL0.
-.00000000000000.`], 
+.00000000000000.`],
   [w, bitmap`
 0000000000000000
 0777777777777770
@@ -154,16 +154,16 @@ w...w.....w.w
 w.p.w..z....w
 w...w.....w.w
 w...wwwwwwwww
-w-------d---w
+w.......d...w
 wwwwwwwwwwwww`,
   map`
 wwwwwwwwwwwwwww
-wp.wdw....z.wkw
-w..w.ww.www.w.w
-w.....w..fw...w
+wp.wdw.....wkww
+w..w.ww.www...w
+w.....w..f....w
 w..wwwwwwww.www
 w...w..w..d...w
-w.www.fw..www.w
+w.www..f..www.w
 w.w.........w.w
 w.w.wwwwwww.w.w
 w.w.dw....w.w.w
@@ -172,39 +172,148 @@ w......w....wdw
 wwwwwwwwwwwwwww`
 ];
 
+const victoryMap = map`
+wwwwwwwwwwwwwww
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+w.............w
+wwwwwwwwwwwwwww`;
+
 let currentLevel = 0;
+let gameOver = false;
+
+const firewallDirs = new Map();
+
+function initFirewalls() {
+  firewallDirs.clear();
+  getAll("f").forEach((fw, i) => {
+    firewallDirs.set(fw, i % 2 === 0
+      ? { dx: 0, dy: 1 }
+      : { dx: 1, dy: 0 }
+    );
+  });
+}
+
+function moveFirewalls() {
+  if (gameOver) return;
+  getAll("f").forEach(fw => {
+    let { dx, dy } = firewallDirs.get(fw) || { dx: 0, dy: 1 };
+    const nx = fw.x + dx;
+    const ny = fw.y + dy;
+    const ahead = getTile(nx, ny);
+    const blocked = ahead.some(t =>
+      t.type === "w" || t.type === "v" || t.type === "f"
+    );
+    if (blocked) {
+      firewallDirs.set(fw, { dx: -dx, dy: -dy });
+    } else {
+      fw.x = nx;
+      fw.y = ny;
+    }
+    const player = getFirst("p");
+    if (player && fw.x === player.x && fw.y === player.y) {
+      currentLevel = 0;
+      setupLevel();
+    }
+  });
+}
+
+setInterval(moveFirewalls, 600);
+
+function isWall(tiles) {
+  return tiles.some(t => t.type === "w" || t.type === "v");
+}
+
+function showVictory() {
+  gameOver = true;
+  setMap(victoryMap);
+  addText("VICTORY!", { x: 3, y: 5, color: color`green` });
+  addText("You Win!", { x: 3, y: 7, color: color`black` });
+  addText("Press I", { x: 4, y: 9, color: color`black` });
+  addText("to replay", { x: 3, y: 10, color: color`black` });
+}
 
 function setupLevel() {
+  gameOver = false;
+  clearText();
   setMap(levels[currentLevel]);
+  initFirewalls();
 }
 
 setupLevel();
 
-onInput("w", () => { const p = getFirst("p"); if(p) p.y -= 1; });
-onInput("s", () => { const p = getFirst("p"); if(p) p.y += 1; });
-onInput("a", () => { const p = getFirst("p"); if(p) p.x -= 1; });
-onInput("d", () => { const p = getFirst("p"); if(p) p.x += 1; });
-onInput("i", () => setupLevel());
+onInput("w", () => {
+  if (gameOver) return;
+  const player = getFirst("p");
+  if (!player) return;
+  const ny = player.y - 1;
+  if (ny < 0) return;
+  if (!isWall(getTile(player.x, ny))) player.y = ny;
+});
+
+onInput("s", () => {
+  if (gameOver) return;
+  const player = getFirst("p");
+  if (!player) return;
+  const ny = player.y + 1;
+  if (!isWall(getTile(player.x, ny))) player.y = ny;
+});
+
+onInput("a", () => {
+  if (gameOver) return;
+  const player = getFirst("p");
+  if (!player) return;
+  const nx = player.x - 1;
+  if (nx < 0) return;
+  if (!isWall(getTile(nx, player.y))) player.x = nx;
+});
+
+onInput("d", () => {
+  if (gameOver) return;
+  const player = getFirst("p");
+  if (!player) return;
+  const nx = player.x + 1;
+  if (!isWall(getTile(nx, player.y))) player.x += 1;
+});
+
+onInput("i", () => {
+  currentLevel = 0;
+  setupLevel();
+});
 
 afterInput(() => {
-  const p = getFirst("p");
-  if (!p) return;
+  if (gameOver) return;
+  const player = getFirst("p");
+  if (!player) return;
 
-  getTile(p.x, p.y).forEach(t => {
-    if (t.type === "z") { 
-      currentLevel = 0; 
-      setupLevel(); 
+  let levelComplete = false;
+
+  getTile(player.x, player.y).forEach(t => {
+    if (t.type === "z") {
+      currentLevel = 0;
+      setupLevel();
+      levelComplete = true;
     }
-    
+
     if (t.type === "d") t.remove();
-    
-    if (t.type === "k") {
+
+    if (t.type === "k" && !levelComplete) {
       if (getAll("d").length === 0) {
+        levelComplete = true;
         currentLevel++;
         if (currentLevel >= levels.length) {
-            addText("VICTORY", { y: 10, color: [255, 255, 255] });
+          showVictory();
         } else {
-            setupLevel();
+          setupLevel();
         }
       }
     }
